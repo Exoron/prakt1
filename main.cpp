@@ -1,25 +1,43 @@
 #include <fstream>
 #include <iostream>
 #include <stack>
+#include <unordered_set>
 #include <vector>
 
+struct Edge {
+  Edge(int from, int to, char symbol);
+
+  bool operator==(const Edge& edge) const {
+    return from == edge.from && to == edge.to && symbol == edge.symbol;
+  }
+
+  int from;
+  int to;
+  char symbol;
+};
+
+Edge::Edge(int from, int to, char symbol)
+    : from{from}, to{to}, symbol{symbol} {}
+
+template <>
+class std::hash<Edge> {
+ public:
+  const int operator()(const Edge& edge) const {
+    std::hash<int> int_hash;
+    return int_hash(edge.from);
+  }
+};
+
 class Automata {
- private:
-  struct Edge {
-    Edge(int from, int to, char symbol);
-
-    int from;
-    int to;
-    char symbol;
-  };
-
+ public:
   struct Node {
     Node(bool start = false, bool terminal = false, bool empty = false);
 
     bool start;
     bool terminal;
     bool empty;
-    std::vector<Edge> edges;
+
+    std::unordered_set<Edge> edges;
   };
 
  public:
@@ -33,16 +51,14 @@ class Automata {
   void Concat(std::stack<int>& start_nodes, std::stack<int>& terminal_nodes);
   void Plus(std::stack<int>& start_nodes, std::stack<int>& terminal_nodes);
   void Kleene(std::stack<int>& start_nodes, std::stack<int>& terminal_nodes);
-  bool Visit(Node& node, char letter, int number);
+  bool Visit(int node, char letter, int number, std::vector<bool> visited,
+             std::vector<int> last_state);
 
  private:
   std::vector<Node> nodes;
   int start;
   int terminal;
 };
-
-Automata::Edge::Edge(int from, int to, char symbol)
-    : from{from}, to{to}, symbol{symbol} {}
 
 Automata::Node::Node(bool start, bool terminal, bool empty)
     : start{start}, terminal{terminal}, empty{empty} {}
@@ -84,7 +100,7 @@ int Automata::AddNode(bool start, bool terminal, bool empty) {
 }
 
 void Automata::AddEdge(int from, int to, char symbol) {
-  nodes[from].edges.emplace_back(from, to, symbol);
+  nodes[from].edges.emplace(from, to, symbol);
 }
 
 void Automata::Concat(std::stack<int>& start_nodes,
@@ -142,18 +158,29 @@ void Automata::Kleene(std::stack<int>& start_nodes,
 }
 
 bool Automata::FindPrefix(char letter, int number) {
-  return Visit(nodes[start], letter, number);
+  std::vector<bool> visited(nodes.size(), false);
+  std::vector<int> last_state(nodes.size(), number);
+  visited[start] = true;
+  return Visit(start, letter, number, visited, last_state);
 }
 
-bool Automata::Visit(Automata::Node& node, char letter, int number) {
+bool Automata::Visit(int node, char letter, int number,
+                     std::vector<bool> visited, std::vector<int> last_state) {
   if (number == 0) {
     return true;
   }
-  for (auto edge : node.edges) {
-    if (edge.symbol == letter && Visit(nodes[edge.to], letter, number - 1)) {
+  visited[node] = true;
+  last_state[node] = number;
+  for (auto edge : nodes[node].edges) {
+    if (visited[edge.to]) {
+      return last_state[edge.to] < number;
+    }
+    if (edge.symbol == letter &&
+        Visit(edge.to, letter, number - 1, visited, last_state)) {
       return true;
     }
-    if (edge.symbol == '1' && Visit(nodes[edge.to], letter, number)) {
+    if (edge.symbol == '1' &&
+        Visit(edge.to, letter, number, visited, last_state)) {
       return true;
     }
   }
